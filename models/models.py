@@ -1,25 +1,20 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
+import typing
+import os 
 
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
-
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from foundations import hparams
-from lottery.desc import LotteryDesc
-from models import base
-from pruning import sparse_global
+from utils.general_utils import Step, paths_model
 
-
-class Model(base.Model):
+class CifarResnetModel(torch.nn.Module):
     """A residual neural network as originally designed for CIFAR-10."""
 
     class Block(nn.Module):
         """A ResNet block."""
 
         def __init__(self, f_in: int, f_out: int, downsample=False):
-            super(Model.Block, self).__init__()
+            super(CifarResnetModel.Block, self).__init__()
 
             stride = 2 if downsample else 1
             self.conv1 = nn.Conv2d(f_in, f_out, kernel_size=3, stride=stride, padding=1, bias=False)
@@ -43,7 +38,7 @@ class Model(base.Model):
             return F.relu(out)
 
     def __init__(self, plan, initializer, outputs=None):
-        super(Model, self).__init__()
+        super(CifarResnetModel, self).__init__()
         outputs = outputs or 10
 
         # Initial convolution.
@@ -56,7 +51,7 @@ class Model(base.Model):
         for segment_index, (filters, num_blocks) in enumerate(plan):
             for block_index in range(num_blocks):
                 downsample = segment_index > 0 and block_index == 0
-                blocks.append(Model.Block(current_filters, filters, downsample))
+                blocks.append(CifarResnetModel.Block(current_filters, filters, downsample))
                 current_filters = filters
 
         self.blocks = nn.Sequential(*blocks)
@@ -75,6 +70,26 @@ class Model(base.Model):
         out = out.view(out.size(0), -1)
         out = self.fc(out)
         return out
+
+    def save(self, save_location: str, save_step: Step):
+        # print(f"Saving model to {save_location}")
+        if not os.path.exists(save_location): os.makedirs(save_location)
+        # print("listing dir:")
+        # print(os.listdir('drive/MyDrive/Experiments'))
+        # if not os.listdir('drive/MyDrive/Experiments'):
+        #     raise Exception("Wut is going on")
+        torch.save(self.state_dict(), paths_model(save_location, save_step))
+
+    @property
+    def prunable_layer_names(self) -> typing.List[str]:
+        """A list of the names of Tensors of this model that are valid for pruning.
+
+        By default, only the weights of convolutional and linear layers are prunable.
+        """
+
+        return [name + '.weight' for name, module in self.named_modules() if
+                isinstance(module, torch.nn.modules.conv.Conv2d) or
+                isinstance(module, torch.nn.modules.linear.Linear)]
 
     @property
     def output_layer_names(self):
@@ -108,7 +123,7 @@ class Model(base.Model):
         The name of the network would be 'cifar_resnet_20' or 'cifar_resnet_20_16'.
         """
 
-        if not Model.is_valid_model_name(model_name):
+        if not CifarResnetModel.is_valid_model_name(model_name):
             raise ValueError('Invalid model name: {}'.format(model_name))
 
         name = model_name.split('_')
@@ -119,7 +134,7 @@ class Model(base.Model):
         D = (D - 2) // 6
         plan = [(W, D), (2*W, D), (4*W, D)]
 
-        return Model(plan, initializer, outputs)
+        return CifarResnetModel(plan, initializer, outputs)
 
     @property
     def loss_criterion(self):
@@ -127,18 +142,18 @@ class Model(base.Model):
 
     @staticmethod
     def default_hparams():
-        model_hparams = hparams.ModelHparams(
+        model_hparams = ModelHparams(
             model_name='cifar_resnet_20',
             model_init='kaiming_normal',
             batchnorm_init='uniform',
         )
 
-        dataset_hparams = hparams.DatasetHparams(
+        dataset_hparams = DatasetHparams(
             dataset_name='cifar10',
             batch_size=128,
         )
 
-        training_hparams = hparams.TrainingHparams(
+        training_hparams = TrainingHparams(
             optimizer_name='sgd',
             momentum=0.9,
             milestone_steps='80ep,120ep',
@@ -154,3 +169,7 @@ class Model(base.Model):
         )
 
         return LotteryDesc(model_hparams, dataset_hparams, training_hparams, pruning_hparams)
+
+
+# registered_models = [mnist_lenet.Model, cifar_resnet.Model, cifar_vgg.Model, imagenet_resnet.Model]
+registered_models = [CifarResnetModel]

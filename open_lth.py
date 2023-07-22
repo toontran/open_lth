@@ -3,60 +3,105 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import argparse
-import sys
-
-from cli import runner_registry
-from cli import arg_utils
-import platforms.registry
+from general_setups import *
+from branches import *
 
 
-def main():
-    # The welcome message.
-    welcome = '='*82 + '\nOpenLTH: A Framework for Research on Lottery Tickets and Beyond\n' + '-'*82
-
-    # Choose an initial command.
-    helptext = welcome + "\nChoose a command to run:"
-    for name, runner in runner_registry.registered_runners.items():
-        helptext += "\n    * {} {} [...] => {}".format(sys.argv[0], name, runner.description())
-    helptext += '\n' + '='*82
-
-    runner_name = arg_utils.maybe_get_arg('subcommand', positional=True)
-    if runner_name not in runner_registry.registered_runners:
-        print(helptext)
-        sys.exit(1)
-
-    # Add the arguments for that command.
-    usage = '\n' + welcome + '\n'
-    usage += 'open_lth.py {} [...] => {}'.format(runner_name, runner_registry.get(runner_name).description())
-    usage += '\n' + '='*82 + '\n'
-
-    parser = argparse.ArgumentParser(usage=usage, conflict_handler='resolve')
-    parser.add_argument('subcommand')
-    parser.add_argument('--platform', default='local', help='The platform on which to run the job.')
-    parser.add_argument('--display_output_location', action='store_true',
-                        help='Display the output location for this job.')
-
-    # Get the platform arguments.
-    platform_name = arg_utils.maybe_get_arg('platform') or 'local'
-    if platform_name and platform_name in platforms.registry.registered_platforms:
-        platforms.registry.get(platform_name).add_args(parser)
-    else:
-        print(f'Invalid platform name: {platform_name}')
-        sys.exit(1)
-
-    # Add arguments for the various runners.
-    runner_registry.get(runner_name).add_args(parser)
-
-    args = parser.parse_args()
-    platform = platforms.registry.get(platform_name).create_from_args(args)
-
-    if args.display_output_location:
-        platform.run_job(runner_registry.get(runner_name).create_from_args(args).display_output_location)
-        sys.exit(0)
-
-    platform.run_job(runner_registry.get(runner_name).create_from_args(args).run)
 
 
-if __name__ == '__main__':
-    main()
+# args = argparse.Namespace(apex_fp16=False,
+#             batch_size=128,
+#             batchnorm_frozen=False,
+#             batchnorm_init='uniform',
+#             blur_factor=None,
+#             data_order_seed=None,
+#             dataset_name='cifar10',
+#             default_hparams='cifar_resnet_20',
+#             display_output_location=False,
+#             do_not_augment=False,
+#             evaluate_only_at_end=False,
+#             gamma=0.1,
+#             levels=20,
+#             lr=0.1,
+#             milestone_steps='80ep,120ep',
+#             model_init='kaiming_normal',
+#             model_name='cifar_resnet_20',
+#             momentum=0.9,
+#             nesterov_momentum=0.0,
+#             num_workers=0,
+#             optimizer_name='sgd',
+#             others_frozen=False,
+#             others_frozen_exceptions=None,
+#             output_frozen=False,
+#             platform='local',
+#             pretrain=False,
+#             pruning_fraction=0.2,
+#             pruning_layers_to_ignore=None,
+#             pruning_strategy='sparse_global',
+#             quiet=False,
+#             random_labels_fraction=None,
+#             replicate=5,
+#             rewinding_steps=None,
+#             subcommand='lottery',
+#             subsample_fraction=None,
+#             training_steps='160ep',
+#             transformation_seed=None,
+#             unsupervised_labels=None,
+#             warmup_steps=None,
+#             weight_decay=0.0001)
+
+# LotteryRunner.create_from_args(args).run()
+
+branch_args = argparse.Namespace(apex_fp16=False,
+          batch_size=128,
+          batchnorm_frozen=False,
+          batchnorm_init='uniform',
+          blur_factor=None,
+          branch_name='randomly_prune',
+          data_order_seed=None,
+          dataset_name='cifar10',
+          default_hparams='cifar_resnet_20',
+          display_output_location=False,
+          do_not_augment=False,
+          evaluate_only_at_end=False,
+          gamma=0.1,
+          layers_to_ignore='',
+          levels='2',
+          lr=0.1,
+          milestone_steps='80ep,120ep',
+          model_init='kaiming_normal',
+          model_name='cifar_resnet_20',
+          momentum=0.9,
+          nesterov_momentum=0.0,
+          num_workers=0,
+          optimizer_name='sgd',
+          others_frozen=False,
+          others_frozen_exceptions=None,
+          output_frozen=False,
+          platform='local',
+          pretrain=False,
+          pretrain_training_steps=None,
+          pruning_fraction=0.2,
+          pruning_layers_to_ignore=None,
+          pruning_strategy='sparse_global',
+          quiet=False,
+          random_labels_fraction=None,
+          replicate=1,
+          rewinding_steps=None,
+          seed=7,
+          start_at='rewind',
+          strategy="3dfilterpos & 2dfilterwise",#'2dfilterwise', #"3dfilterpos"
+          start_at_step_zero=False,
+          subcommand='lottery_branch',
+          subsample_fraction=None,
+          training_steps='160ep',
+          transformation_seed=None,
+          unsupervised_labels=None,
+          warmup_steps=None,
+          weight_decay=0.0001)
+RandomPruneBranch.create_from_args(branch_args).run()
+
+
+
+
+
