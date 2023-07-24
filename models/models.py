@@ -170,6 +170,110 @@ class CifarResnetModel(torch.nn.Module):
 
         return LotteryDesc(model_hparams, dataset_hparams, training_hparams, pruning_hparams)
 
+class MnistLenetModel(torch.nn.Module):
+    '''A LeNet fully-connected model for CIFAR-10'''
+
+    def __init__(self, plan, initializer, outputs=10):
+        super(MnistLenetModel, self).__init__()
+
+        layers = []
+        current_size = 784  # 28 * 28 = number of pixels in MNIST image.
+        for size in plan:
+            layers.append(nn.Linear(current_size, size))
+            current_size = size
+
+        self.fc_layers = nn.ModuleList(layers)
+        self.fc = nn.Linear(current_size, outputs)
+        self.criterion = nn.CrossEntropyLoss()
+
+        self.apply(initializer)
+
+    def forward(self, x):
+        x = x.view(x.size(0), -1)  # Flatten.
+        for layer in self.fc_layers:
+            x = F.relu(layer(x))
+
+        return self.fc(x)
+
+    @property
+    def output_layer_names(self):
+        return ['fc.weight', 'fc.bias']
+
+    @staticmethod
+    def is_valid_model_name(model_name):
+        return (model_name.startswith('mnist_lenet') and
+                len(model_name.split('_')) > 2 and
+                all([x.isdigit() and int(x) > 0 for x in model_name.split('_')[2:]]))
+
+    @staticmethod
+    def get_model_from_name(model_name, initializer, outputs=None):
+        """The name of a model is mnist_lenet_N1[_N2...].
+
+        N1, N2, etc. are the number of neurons in each fully-connected layer excluding the
+        output layer (10 neurons by default). A LeNet with 300 neurons in the first hidden layer,
+        100 neurons in the second hidden layer, and 10 output neurons is 'mnist_lenet_300_100'.
+        """
+
+        outputs = outputs or 10
+
+        if not MnistLenetModel.is_valid_model_name(model_name):
+            raise ValueError('Invalid model name: {}'.format(model_name))
+
+        plan = [int(n) for n in model_name.split('_')[2:]]
+        return MnistLenetModel(plan, initializer, outputs)
+
+    @property
+    def loss_criterion(self):
+        return self.criterion
+
+    def save(self, save_location: str, save_step: Step):
+        # print(f"Saving model to {save_location}")
+        if not os.path.exists(save_location): os.makedirs(save_location)
+        # print("listing dir:")
+        # print(os.listdir('drive/MyDrive/Experiments'))
+        # if not os.listdir('drive/MyDrive/Experiments'):
+        #     raise Exception("Wut is going on")
+        torch.save(self.state_dict(), paths_model(save_location, save_step))
+
+    @property
+    def prunable_layer_names(self) -> typing.List[str]:
+        """A list of the names of Tensors of this model that are valid for pruning.
+
+        By default, only the weights of convolutional and linear layers are prunable.
+        """
+
+        return [name + '.weight' for name, module in self.named_modules() if
+                isinstance(module, torch.nn.modules.conv.Conv2d) or
+                isinstance(module, torch.nn.modules.linear.Linear)]
+
+    @staticmethod
+    def default_hparams():
+        model_hparams = ModelHparams(
+            model_name='mnist_lenet_300_100',
+            model_init='kaiming_normal',
+            batchnorm_init='uniform'
+        )
+
+        dataset_hparams = DatasetHparams(
+            dataset_name='mnist',
+            batch_size=128
+        )
+
+        training_hparams = TrainingHparams(
+            optimizer_name='sgd',
+            lr=0.1,
+            training_steps='40ep',
+        )
+
+        pruning_hparams = PruningHparams(
+            pruning_strategy='sparse_global',
+            pruning_fraction=0.2,
+            pruning_layers_to_ignore='fc.weight',
+        )
+
+        return LotteryDesc(model_hparams, dataset_hparams, training_hparams, pruning_hparams)
+
+
 
 # registered_models = [mnist_lenet.Model, cifar_resnet.Model, cifar_vgg.Model, imagenet_resnet.Model]
-registered_models = [CifarResnetModel]
+registered_models = [CifarResnetModel, MnistLenetModel]
