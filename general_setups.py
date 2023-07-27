@@ -443,6 +443,12 @@ class LotteryDesc(Desc):
         # Create the desc.
         desc = cls(model_hparams, dataset_hparams, training_hparams, pruning_hparams)
 
+        # Handle experiment folder path
+        if args.experiment_folder_path:
+            desc.root_folder = args.experiment_folder_path
+        else:
+            raise Exception("Need to set argument \"experiment_folder_path\"") 
+
         # Handle pretraining.
         if args.pretrain and not Step.str_is_zero(args.pretrain_training_steps):
             desc.pretrain_dataset_hparams = DatasetHparams.create_from_args(args, prefix='pretrain')
@@ -494,8 +500,8 @@ class LotteryDesc(Desc):
         #                     f'replicate_{replicate}', f'level_{pruning_level}', experiment)
         # root = "/root/open_lth_data/"
         # root = "/content/drive/My Drive/Experiments"
-        root = "/home/dragon/xin/projects/toon/Experiments"
-        return os.path.join(root, self.hashname,
+        #root = "/home/dragon/xin/projects/toon/Experiments"
+        return os.path.join(self.root_folder, self.hashname,
                             f'replicate_{replicate}', f'level_{pruning_level}', experiment)
 
     @property
@@ -784,9 +790,6 @@ class Branch(Runner):
             if self.verbose:
                 print('='*82)
                 print(f'Branch {self.name()} (Replicate {self.replicate}, Level {self.level})\n' + '-'*82)
-                print(f'{self.lottery_desc.display}\n{self.desc.branch_hparams.display}')
-                print(f'Output Location: {self.branch_root}\n' + '='*82 + '\n')
-
             args = {f.name: getattr(self.desc.branch_hparams, f.name)
                     for f in fields(self.BranchHparams) if not f.name.startswith('_')}
             self.branch_function(**args)

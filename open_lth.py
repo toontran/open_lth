@@ -8,8 +8,9 @@ from branches import *
 
 
 
-
+## Finding Lottery ticket with normal IMP and rewind 1000 iterations
 # args = argparse.Namespace(apex_fp16=False,
+#             experiment_folder_path="/home/dragon/xin/projects/toon/Experiments",
 #             batch_size=128,
 #             batchnorm_frozen=False,
 #             batchnorm_init='uniform',
@@ -52,6 +53,8 @@ from branches import *
 
 # LotteryRunner.create_from_args(args).run()
 
+#########
+
 strategies = [
     "layerwise",
     "2dfilterwise",
@@ -65,6 +68,7 @@ def resnet20_cifar10_rewind(strategy="original",
                                 level:str="1"):
     assert strategy in strategies, f"Unrecognized branch {strategy}, must be one of {strategies}"
     branch_args = argparse.Namespace(apex_fp16=False,
+            experiment_folder_path="/home/dragon/xin/projects/toon/Experiments",
             batch_size=128,
             batchnorm_frozen=False,
             batchnorm_init='uniform',
@@ -124,6 +128,7 @@ def resnet20_cifar10_rewind(strategy="original",
 
 
 # branch_args = argparse.Namespace(apex_fp16=False,
+#           experiment_folder_path="/home/dragon/xin/projects/toon/Experiments",
 #           batch_size=128,
 #           batchnorm_frozen=False,
 #           batchnorm_init='uniform',
