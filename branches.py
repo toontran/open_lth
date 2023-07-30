@@ -27,6 +27,14 @@ class RandomPruneBranch(Branch):
                                                     for k, filter_2d in enumerate(filter_3d)]).unsqueeze(0)
                                         for j, filter_3d in enumerate(mask[key])])
 
+        elif strategy == "3dfilterwise":
+            for i, key in enumerate(sorted(mask.keys())):
+                if "conv" in key:
+                    mask[key] = torch.cat([
+                        shuffle_tensor(filter_3d, seed=seed+j+len(mask[key])*i).unsqueeze(0) 
+                                                      for j, filter_3d in enumerate(mask[key])
+                    ])
+
         elif strategy == "3dfilterpos":
             keys = [k for k in mask.keys() if "conv" in k]
             for i in range(len(keys)-1):
@@ -104,3 +112,57 @@ class RandomInitBranch(Branch):
     @staticmethod
     def name():
         return 'randomly_reinitialize'
+
+class ExternalBranch(Branch):
+    def branch_function(self, mask_path: str, model_path: str, start_step:str="0it"):
+        # Need to load masks somehow
+        model = model_registry_get(self.lottery_desc.model_hparams)
+        def device_str():
+            # GPU device.
+            if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+                device_ids = ','.join([str(x) for x in range(torch.cuda.device_count())])
+                return f'cuda:{device_ids}'
+            # CPU device.
+            else:
+                return 'cpu'
+        torch_device = torch.device(device_str())
+        state_dict = torch.load(model_path, map_location=torch_device)
+        # import pdb;pdb.set_trace()
+        # Remove "_mask" in parameter names
+        try:
+            model.load_state_dict({name.replace("_mask", "") : state_dict[name] for name in state_dict})
+        except Exception as e:
+            print(e)
+            model.load_state_dict({name.replace("_mask", "") : state_dict[name] for name in state_dict}, strict=False)
+        mask = Mask(torch.load(mask_path, map_location=torch_device))
+        model.to(torch_device)
+        #import pdb;pdb.set_trace()
+        pruned_model = PrunedModel(model, mask)
+        #mask.save(self.branch_root)
+        standard_train(pruned_model, self.branch_root, self.lottery_desc.dataset_hparams,
+                       self.lottery_desc.training_hparams,
+                       start_step=self.lottery_desc.str_to_step(start_step), 
+                       verbose=self.verbose)
+
+    @staticmethod
+    def description():
+        return "Load external models and masks for evaluation."
+
+    @staticmethod
+    def name():
+        return 'external'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
