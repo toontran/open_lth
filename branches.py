@@ -1,4 +1,5 @@
 from general_setups import *
+import torch.nn as nn
 
 class RandomPruneBranch(Branch):
     def branch_function(self, seed: int, strategy: str = 'layerwise', start_at: str = 'rewind',
@@ -114,7 +115,14 @@ class RandomInitBranch(Branch):
         return 'randomly_reinitialize'
 
 class ExternalBranch(Branch):
-    def branch_function(self, mask_path: str, model_path: str, start_step:str="0it"):
+    def branch_function(self, mask_path:str, 
+            model_path:str, 
+            start_step:str="0it",
+            strategy:str="str",
+            seed:int=0,):
+        print(f"Model: {model_path}\nMask: {mask_path}\nStrategy: {strategy}")
+        print(f'Output Location: {self.return_output_location()}' + '\n' + '='*82 + '\n')
+        
         # Need to load masks somehow
         model = model_registry_get(self.lottery_desc.model_hparams)
         def device_str():
@@ -127,14 +135,64 @@ class ExternalBranch(Branch):
                 return 'cpu'
         torch_device = torch.device(device_str())
         state_dict = torch.load(model_path, map_location=torch_device)
-        # import pdb;pdb.set_trace()
+        
         # Remove "_mask" in parameter names
         try:
-            model.load_state_dict({name.replace("_mask", "") : state_dict[name] for name in state_dict})
+            model.load_state_dict({name : state_dict[name] for name in state_dict})
         except Exception as e:
             print(e)
-            model.load_state_dict({name.replace("_mask", "") : state_dict[name] for name in state_dict}, strict=False)
+            model.load_state_dict({name : state_dict[name] for name in state_dict}, strict=False)
         mask = Mask(torch.load(mask_path, map_location=torch_device))
+        
+         # Randomize while keeping the same layerwise proportions as the original mask.
+        if strategy == 'layerwise': mask = Mask(shuffle_state_dict(mask, seed=seed))
+
+        # Randomize globally throughout all prunable layers.
+        elif strategy == 'global': mask = Mask(unvectorize(shuffle_tensor(vectorize(mask), seed=seed), mask))
+
+        # Randomize evenly across all layers.
+        elif strategy == 'even':
+            sparsity = mask.sparsity
+            for i, k in sorted(mask.keys()):
+                layer_mask = torch.where(torch.arange(mask[k].size) < torch.ceil(sparsity * mask[k].size),
+                                         torch.ones_like(mask[k].size), torch.zeros_like(mask[k].size))
+                mask[k] = shuffle_tensor(layer_mask, seed=seed+i).reshape(mask[k].size)
+
+        elif strategy == "2dfilterwise":
+            for i, key in enumerate(sorted(mask.keys())):
+                if "conv" in key:
+                    mask[key] = torch.cat([torch.cat([shuffle_tensor(filter_2d, seed=seed+k+len(filter_3d)*j+len(filter_3d)*len(mask[key])*i).unsqueeze(0)
+                                                    for k, filter_2d in enumerate(filter_3d)]).unsqueeze(0)
+                                        for j, filter_3d in enumerate(mask[key])])
+
+        elif strategy == "3dfilterwise":
+            for i, key in enumerate(sorted(mask.keys())):
+                if "conv" in key:
+                    mask[key] = torch.cat([
+                        shuffle_tensor(filter_3d, seed=seed+j+len(mask[key])*i).unsqueeze(0)
+                                                      for j, filter_3d in enumerate(mask[key])
+                    ])
+
+        elif strategy == "3dfilterpos":
+            keys = [k for k in mask.keys() if "conv" in k]
+            for i in range(len(keys)-1):
+                perm = torch.randperm(mask[keys[i]].size()[0])
+                mask[keys[i]] = mask[keys[i]][perm]
+                mask[keys[i+1]] = mask[keys[i+1]][:,perm]
+
+        elif strategy == "3dfilterpos & 2dfilterwise":
+            keys = [k for k in mask.keys() if "conv" in k]
+            for i in range(len(keys)-1):
+                perm = torch.randperm(mask[keys[i]].size()[0])
+                mask[keys[i]] = mask[keys[i]][perm]
+                mask[keys[i+1]] = mask[keys[i+1]][:,perm]
+
+            for i, key in enumerate(sorted(mask.keys())):
+                if "conv" in key:
+                    mask[key] = torch.cat([torch.cat([shuffle_tensor(filter_2d, seed=seed+k+len(filter_3d)*j+len(filter_3d)*len(mask[key])*i).unsqueeze(0)
+                                                    for k, filter_2d in enumerate(filter_3d)]).unsqueeze(0)
+                                        for j, filter_3d in enumerate(mask[key])])
+
         model.to(torch_device)
         #import pdb;pdb.set_trace()
         pruned_model = PrunedModel(model, mask)
